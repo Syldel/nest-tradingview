@@ -6,7 +6,7 @@
 
 ## Description
 
-TODO
+A NestJS scraper for TradingView, leveraging Puppeteer for browser automation and Cheerio for HTML parsing.
 
 ## Project setup
 

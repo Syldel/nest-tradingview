@@ -21,7 +21,7 @@
   "keywords": [],
   "author": "Sylvain D.",
   "license": "ISC",
-  "description": "",
+  "description": "A NestJS scraper for TradingView",
   "engines": {
     "node": "18.20.7",
     "npm": "10.8.2"
@@ -31,6 +31,8 @@
     "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^10.4.18",
     "@nestjs/platform-express": "^10.4.18",
+    "cheerio": "^1.0.0",
+    "puppeteer": "^24.9.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
