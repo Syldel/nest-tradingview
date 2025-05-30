@@ -3,10 +3,10 @@ import { ConfigService } from '@nestjs/config';
 
 import puppeteer, { Browser, Page } from 'puppeteer';
 import * as cheerio from 'cheerio';
-import { JsonService } from '@services/json.service';
 import { ELogColor, UtilsService } from '@services/utils.service';
 
 import { ChartInterval } from '../types/chart';
+import { CookiesService } from '../cookies/cookies.service';
 
 @Injectable()
 export class WebScraperService implements OnModuleInit {
@@ -21,9 +21,9 @@ export class WebScraperService implements OnModuleInit {
     this.utilsService.coloredText(color, text);
 
   constructor(
-    private readonly jsonService: JsonService,
     private readonly utilsService: UtilsService,
     private readonly configService: ConfigService,
+    private readonly cookiesService: CookiesService,
   ) {
     this.scraperTargetUrl =
       this.configService.get<string>('SCRAPER_TARGET_URL');
@@ -46,27 +46,31 @@ export class WebScraperService implements OnModuleInit {
     this.browser = await puppeteer.launch({ headless: false });
 
     // Définir les cookies d'authentification
-    const cookieJsonFileName = `jsons/cookie.json`;
-    const cookieData = await this.jsonService.readJsonFile(cookieJsonFileName);
+    const rawCookies = await this.cookiesService.findAll();
+    console.log('Cookies from database:', rawCookies.length);
+
+    const cookieData = rawCookies
+      .filter(
+        (c) =>
+          typeof c.name === 'string' &&
+          typeof c.value === 'string' &&
+          typeof c.domain === 'string' &&
+          c.name.trim() !== '' &&
+          c.domain.trim() !== '',
+      )
+      .map((c) => ({
+        name: c.name.trim(),
+        value: c.value.trim(),
+        domain: c.domain.trim(),
+        path: c.path ?? '/',
+        secure: !!c.secure,
+        httpOnly: !!c.httpOnly,
+        expires: c.expirationDate
+          ? Math.floor(new Date(c.expirationDate).getTime() / 1000)
+          : undefined,
+      }));
 
     if (cookieData && Object.keys(cookieData).length > 0) {
-      cookieData.map((cookie) => {
-        if (!cookie.expires) {
-          if (cookie.expirationDate) {
-            cookie.expires = Number(cookie.expirationDate);
-          } else {
-            cookie.expires = -1;
-          }
-          delete cookie.expirationDate;
-        }
-        delete cookie.hostOnly;
-        delete cookie.sameSite;
-        delete cookie.storeId;
-        delete cookie.id;
-        if (!cookie.size) cookie.size = -1;
-        return cookie;
-      });
-
       await this.browser.setCookie(...cookieData);
     }
 
