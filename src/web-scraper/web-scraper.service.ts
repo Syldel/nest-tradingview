@@ -1,14 +1,18 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 
 import puppeteer, { Browser, Page } from 'puppeteer';
 import * as cheerio from 'cheerio';
 import { JsonService } from '@services/json.service';
 import { ELogColor, UtilsService } from '@services/utils.service';
 
+import { ChartInterval } from '../types/chart';
+
 @Injectable()
 export class WebScraperService implements OnModuleInit {
   private page: Page;
   private browser: Browser;
+  private scraperTargetUrl: string;
 
   private coloredLog = (color: ELogColor, text: string) =>
     this.utilsService.coloredLog(color, text);
@@ -19,8 +23,11 @@ export class WebScraperService implements OnModuleInit {
   constructor(
     private readonly jsonService: JsonService,
     private readonly utilsService: UtilsService,
-    // private readonly configService: ConfigService
-  ) {}
+    private readonly configService: ConfigService,
+  ) {
+    this.scraperTargetUrl =
+      this.configService.get<string>('SCRAPER_TARGET_URL');
+  }
 
   onModuleInit() {
     this.start();
@@ -32,7 +39,7 @@ export class WebScraperService implements OnModuleInit {
     console.log('★ Init Puppeteer');
     await this.initPuppeteer();
 
-    await this.scrape('https://fr.tradingview.com/chart/oq7aL83H/');
+    await this.scrape(this.scraperTargetUrl);
   }
 
   async initPuppeteer() {
@@ -99,10 +106,15 @@ export class WebScraperService implements OnModuleInit {
     const layoutAreaTopLeft = $('.layout__area--topleft').length === 1;
     console.log('isLogged:', layoutAreaTopLeft);
 
-    await this.selectSymbol('ETHEUR', 'Kraken', $);
+    if (layoutAreaTopLeft) {
+      await this.selectSymbol('ETHEUR', 'Kraken', $);
 
-    // TODO
-    // header-toolbar-intervals
+      await this.selectInterval('1D', $);
+
+      await this.utilsService.waitSeconds(1000);
+    } else {
+      this.coloredLog(ELogColor.FgRed, `Your are not logged!`);
+    }
 
     // await this.browser.close();
 
@@ -110,35 +122,68 @@ export class WebScraperService implements OnModuleInit {
   }
 
   async selectSymbol(symbol: string, exchange: string, $: cheerio.CheerioAPI) {
-    const hasHeaderToolbarSymbolSearch =
-      $('#header-toolbar-symbol-search').length === 1;
-    console.log('hasHeaderToolbarSymbolSearch:', hasHeaderToolbarSymbolSearch);
+    const domSelector = '#header-toolbar-symbol-search';
 
-    await this.page.click('#header-toolbar-symbol-search');
-    await this.utilsService.waitSeconds(2000);
+    await this.page.click(domSelector);
+    await this.utilsService.waitSeconds(1000);
 
     await this.page.type('[data-role="search"]', symbol);
 
-    await this.utilsService.waitSeconds(2000);
+    await this.utilsService.waitSeconds(1000);
 
     const textToFound = exchange;
-    const elByTextHasBeenFound = await this.clickElementByText(
+    await this.clickElementByText(
       this.page,
       textToFound,
       '[data-role="list-item"]',
       '[data-name="symbol-search-items-dialog"]',
     );
-    if (elByTextHasBeenFound) {
-      this.coloredLog(
-        ELogColor.FgGreen,
-        `clickElementByText: Element with text "${textToFound}" has been found and clicked!`,
+
+    await this.utilsService.waitSeconds(1000);
+
+    const newHtml = await this.page.content();
+    $ = cheerio.load(newHtml);
+
+    console.log(
+      'Selected symbol:',
+      this.coloredText(ELogColor.FgYellow, $(domSelector).text()),
+    );
+    return $(domSelector).text() === symbol;
+  }
+
+  async selectInterval(interval: ChartInterval, $: cheerio.CheerioAPI) {
+    const domSelector = '#header-toolbar-intervals';
+
+    await this.page.click(domSelector);
+    await this.utilsService.waitSeconds(1000);
+
+    await this.page.waitForSelector('[data-name="popup-menu-container"]');
+
+    await this.page.evaluate((targetInterval) => {
+      const container = document.querySelector(
+        '[data-name="popup-menu-container"]',
       );
-    } else {
-      this.coloredLog(
-        ELogColor.FgRed,
-        `clickElementByText: Element with text "${textToFound}" has NOT been found!`,
+      if (!container) return;
+
+      const item = container.querySelector(
+        `[data-role="menuitem"][data-value="${targetInterval}"]`,
       );
-    }
+      if (item) {
+        (item as HTMLElement).click();
+      }
+    }, interval);
+
+    await this.utilsService.waitSeconds(1000);
+
+    const newHtml = await this.page.content();
+    $ = cheerio.load(newHtml);
+
+    console.log(
+      'Selected interval:',
+      this.coloredText(ELogColor.FgYellow, $(domSelector).text()),
+    );
+
+    return $(domSelector).text();
   }
 
   /**
@@ -167,7 +212,6 @@ export class WebScraperService implements OnModuleInit {
         for (const el of elements) {
           if (el.textContent?.includes(text)) {
             (el as HTMLElement).click();
-            (el as HTMLElement).parentElement.click();
             return true;
           }
         }
