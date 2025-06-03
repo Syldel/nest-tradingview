@@ -6,6 +6,7 @@ import * as cheerio from 'cheerio';
 import { ELogColor, UtilsService } from '@services/utils.service';
 
 import { ChartInterval } from '../types/chart';
+import { GetStrategyDataParams } from '../types/strategy-data.type';
 import { CookiesService } from '../cookies/cookies.service';
 
 @Injectable()
@@ -115,6 +116,16 @@ export class WebScraperService implements OnModuleInit {
 
       await this.selectInterval('1D', $);
 
+      // 'Machine Learning: kNN-based Strategy (update)'
+      // strategyTitle: 'Machine Learning: Lorentzian Classification',
+      // shortStrategyTitle: 'Lorentzian Classification',
+      const strategyData = await this.getStrategyData({
+        strategyTitle: 'Machine Learning Adaptive SuperTrend [AlgoAlpha]',
+        shortStrategyTitle: 'AlgoAlpha - 🤖 Adaptive SuperTrend',
+        $,
+      });
+      console.log('strategyData:', strategyData);
+
       await this.utilsService.waitSeconds(1000);
     } else {
       this.coloredLog(ELogColor.FgRed, `Your are not logged!`);
@@ -161,8 +172,6 @@ export class WebScraperService implements OnModuleInit {
     await this.page.click(domSelector);
     await this.utilsService.waitSeconds(1000);
 
-    await this.page.waitForSelector('[data-name="popup-menu-container"]');
-
     await this.page.evaluate((targetInterval) => {
       const container = document.querySelector(
         '[data-name="popup-menu-container"]',
@@ -188,6 +197,170 @@ export class WebScraperService implements OnModuleInit {
     );
 
     return $(domSelector).text();
+  }
+
+  async getStrategyData(params: GetStrategyDataParams) {
+    const { strategyTitle, shortStrategyTitle, $, attempt = 1 } = params;
+    const maxAttempts = 5;
+
+    if ($('[data-name="widgetbar-pages-with-tabs"]').length === 0) {
+      await this.page.click(
+        '[data-name="right-toolbar"] [data-name="object_tree"]',
+      );
+      await this.utilsService.waitSeconds(1000);
+    }
+
+    if ($('.chart-data-window').length === 0) {
+      await this.page.click(
+        '#union-object-tree-widget-switcher button#data-window',
+      );
+      await this.utilsService.waitSeconds(1000);
+    }
+
+    const item = await this.page.evaluate(
+      (title, shortTitle) => {
+        const container = document.querySelector(
+          '.chart-data-window [role="treegrid"]',
+        );
+        if (!container) return null;
+
+        const menuItems = container.querySelectorAll('[data-role="menuitem"]');
+        const match = Array.from(menuItems).find((el) => {
+          const text = el.textContent?.trim();
+          return text?.includes(title) || text?.includes(shortTitle);
+        });
+
+        return match ? match.outerHTML : null;
+      },
+      strategyTitle,
+      shortStrategyTitle,
+    );
+
+    let result = [];
+    if (item) {
+      result = this.parseHtmlToJson(item);
+    } else {
+      await this.selectIndicator({
+        strategyTitle,
+        $,
+        shortStrategyTitle,
+      });
+    }
+
+    if (result.length > 0) {
+      return result;
+    } else if (attempt < maxAttempts) {
+      console.log(`getStrategyData RETRY #${attempt} — waiting 1s...`);
+      await this.utilsService.waitSeconds(1000);
+      return await this.getStrategyData({
+        strategyTitle,
+        $,
+        shortStrategyTitle,
+        attempt: attempt + 1,
+      });
+    }
+
+    throw new Error(`getStrategyData failed after ${maxAttempts} attempts`);
+  }
+
+  async cleanIndicators() {
+    await this.page.evaluate(() => {
+      const container = document.querySelector(
+        '[data-name="removeAllDrawingTools"]',
+      );
+      if (!container) return;
+
+      const button = Array.from(container.querySelectorAll('button')).find(
+        (btn) => !btn.querySelector('[class^="arrowIcon"]'),
+      );
+
+      if (button) {
+        (button as HTMLElement).click();
+      }
+    });
+
+    await this.utilsService.waitSeconds(1000);
+
+    await this.page.click(
+      '#overlap-manager-root [data-name="popup-menu-container"] [data-name="menu-inner"] [data-name="remove-studies"]',
+    );
+
+    await this.utilsService.waitSeconds(1000);
+  }
+
+  async selectIndicator(params: GetStrategyDataParams) {
+    const { strategyTitle, shortStrategyTitle } = params;
+    let $ = params.$;
+
+    await this.cleanIndicators();
+    await this.utilsService.waitSeconds(1000);
+
+    await this.page.click('[data-name="open-indicators-dialog"]');
+    await this.utilsService.waitSeconds(1000);
+
+    await this.page.type(
+      '[data-name="indicators-dialog"] [data-role="search"]',
+      strategyTitle,
+    );
+
+    await this.utilsService.waitSeconds(1000);
+
+    const textToFound = strategyTitle;
+    await this.clickElementByText(
+      this.page,
+      textToFound,
+      '[data-role="list-item"]',
+      '[data-name="indicators-dialog"] [data-role="dialog-content"]',
+    );
+
+    await this.utilsService.waitSeconds(1000);
+
+    await this.page.click(
+      '[data-name="indicators-dialog"] [data-name="close"]',
+    );
+
+    await this.utilsService.waitSeconds(1000);
+
+    const newHtml = await this.page.content();
+    $ = cheerio.load(newHtml);
+
+    $('.chart-markup-table [data-name="legend-source-title"]').each(
+      (index, el) => {
+        const text = $(el).text().trim();
+
+        if (text === shortStrategyTitle) {
+          console.log(
+            `✅ Exact match found for strategy title: "${shortStrategyTitle}"`,
+          );
+        } else if (text.includes(shortStrategyTitle)) {
+          console.log(
+            `☑ Partial match found for strategy title: "${shortStrategyTitle}" in "${text}"`,
+          );
+        }
+      },
+    );
+  }
+
+  /**
+   * Parses HTML content of a TradingView-style value container and returns structured data.
+   *
+   * @param html - The raw HTML string to parse.
+   * @returns An array of objects containing title and value for each data item.
+   */
+  private parseHtmlToJson(html: string): { title: string; value: string }[] {
+    const $ = cheerio.load(html);
+    const result: { title: string; value: string }[] = [];
+
+    $('[class^="item-"]').each((_, el) => {
+      const title = $(el).find('[data-test-id-value-title]').text().trim();
+      const value = $(el).find('span').text().trim();
+
+      if (title && value) {
+        result.push({ title, value });
+      }
+    });
+
+    return result;
   }
 
   /**
