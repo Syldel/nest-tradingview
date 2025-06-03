@@ -8,6 +8,7 @@ import { AppService } from './app.service';
 import { WebScraperModule } from './web-scraper/web-scraper.module';
 import { SharedModule } from '@services/shared.module';
 import { CookiesModule } from './cookies/cookies.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { CookiesModule } from './cookies/cookies.module';
     CookiesModule,
     SharedModule,
     WebScraperModule,
+    HealthModule,
   ],
   controllers: [AppController],
   providers: [AppService],
