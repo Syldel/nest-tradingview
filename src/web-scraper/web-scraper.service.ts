@@ -1,7 +1,8 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import puppeteer, { Browser, Page } from 'puppeteer';
+import puppeteer, { Browser, LaunchOptions, Page } from 'puppeteer';
+import { executablePath } from 'puppeteer';
 import * as cheerio from 'cheerio';
 import { ELogColor, UtilsService } from '@services/utils.service';
 
@@ -14,6 +15,8 @@ export class WebScraperService implements OnModuleInit {
   private page: Page;
   private browser: Browser;
   private scraperTargetUrl: string;
+
+  private isProduction = process.env.NODE_ENV === 'production';
 
   private coloredLog = (color: ELogColor, text: string) =>
     this.utilsService.coloredLog(color, text);
@@ -44,7 +47,18 @@ export class WebScraperService implements OnModuleInit {
   }
 
   async initPuppeteer() {
-    this.browser = await puppeteer.launch({ headless: false });
+    console.log('executablePath:', executablePath());
+    let options: LaunchOptions;
+    if (this.isProduction) {
+      options = {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: executablePath(),
+      };
+    } else {
+      options = { headless: false };
+    }
+    this.browser = await puppeteer.launch(options);
 
     // Définir les cookies d'authentification
     const rawCookies = await this.cookiesService.findAll();
@@ -102,7 +116,12 @@ export class WebScraperService implements OnModuleInit {
   async scrape(url: string): Promise<any> {
     console.log(`Launching browser to scrape: ${url}`);
 
-    await this.page.goto(url, { waitUntil: 'networkidle2' });
+    await this.page.goto(url, {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000,
+    });
+
+    await this.utilsService.waitSeconds(1000);
 
     const content = await this.page.content();
 

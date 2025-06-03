@@ -16,7 +16,8 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "prepare": "node .husky/install.mjs",
-    "pre-commit": "lint-staged"
+    "pre-commit": "lint-staged",
+    "postinstall": "puppeteer browsers install"
   },
   "keywords": [],
   "author": "Sylvain D.",
