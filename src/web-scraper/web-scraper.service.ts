@@ -6,7 +6,7 @@ import { executablePath } from 'puppeteer';
 import * as cheerio from 'cheerio';
 import { ELogColor, UtilsService } from '@services/utils.service';
 
-import { ChartInterval } from '../types/chart';
+import { ChartInterval } from '../types/chart.type';
 import { GetStrategyDataParams } from '../types/strategy-data.type';
 import { CookiesService } from '../cookies/cookies.service';
 
@@ -111,6 +111,39 @@ export class WebScraperService implements OnModuleInit {
     );
 
     await this.page.setUserAgent(randomUserAgent);
+
+    if (this.configService.get<string>('EMULATE_SLOW_NETWORK')) {
+      await this.emulateSlowNetwork(this.page);
+    }
+  }
+
+  async emulateSlowNetwork(
+    page: Page,
+    options = {
+      offline: false,
+      downloadKbps: 2000,
+      uploadKbps: 2000,
+      latencyMs: 200,
+    },
+  ) {
+    const client = await page.createCDPSession();
+
+    await client.send('Network.enable');
+
+    await client.send('Network.emulateNetworkConditions', {
+      offline: options.offline,
+      downloadThroughput: (options.downloadKbps * 1024) / 8,
+      uploadThroughput: (options.uploadKbps * 1024) / 8,
+      latency: options.latencyMs,
+    });
+
+    console.log(
+      `⚠ Slow network emulation → ${
+        options.offline
+          ? 'Offline'
+          : `${options.downloadKbps}kbps ↓ / ${options.uploadKbps}kbps ↑ / ${options.latencyMs}ms`
+      }`,
+    );
   }
 
   async scrape(url: string): Promise<any> {
@@ -121,34 +154,67 @@ export class WebScraperService implements OnModuleInit {
       timeout: 60000,
     });
 
-    await this.utilsService.waitSeconds(1000);
+    await this.page.waitForSelector('.js-rootresizer__contents', {
+      visible: true,
+      timeout: 60000,
+    });
+    console.log('✅ .js-rootresizer__contents displayed!');
+
+    await this.page.waitForSelector(
+      '.layout__area--top #header-toolbar-symbol-search',
+      {
+        visible: true,
+        timeout: 60000,
+      },
+    );
+    console.log('✅ #header-toolbar-symbol-search displayed!');
+
+    await this.page.waitForSelector('.layout__area--left #drawing-toolbar', {
+      visible: true,
+      timeout: 60000,
+    });
+    console.log('✅ #drawing-toolbar displayed!');
+
+    await this.page.waitForSelector(
+      '.layout__area--topleft [data-role="button"]',
+      {
+        visible: true,
+        timeout: 60000,
+      },
+    );
+    console.log('✅ Top left button displayed!');
+
+    await this.page.waitForSelector('#footer-chart-panel', {
+      visible: true,
+      timeout: 60000,
+    });
+    console.log('✅ #footer-chart-panel displayed!');
+
+    // On attend que le réseau soit inactif (ex: AJAX terminé)
+    await this.page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
+    console.log('✅ -------[NETWORK IS IDLE]-------');
 
     const content = await this.page.content();
 
     const $ = cheerio.load(content);
 
-    const layoutAreaTopLeft = $('.layout__area--topleft').length === 1;
-    console.log('isLogged:', layoutAreaTopLeft);
+    /* ******************************************************** */
+    await this.selectSymbol('ETHEUR', 'Kraken', $);
 
-    if (layoutAreaTopLeft) {
-      await this.selectSymbol('ETHEUR', 'Kraken', $);
+    await this.selectInterval('1D', $);
 
-      await this.selectInterval('1D', $);
+    // 'Volume SuperTrend AI (Expo)'
+    // 'Machine Learning Adaptive SuperTrend [AlgoAlpha]', 'AlgoAlpha - 🤖 Adaptive SuperTrend'
+    // 'Machine Learning: kNN-based Strategy (update)'
+    // 'Machine Learning: Lorentzian Classification', 'Lorentzian Classification'
+    const strategyData = await this.getStrategyData({
+      strategyTitle: 'Volume SuperTrend AI (Expo)',
+      shortStrategyTitle: null,
+      $,
+    });
+    console.log('strategyData:', strategyData);
 
-      // 'Machine Learning: kNN-based Strategy (update)'
-      // strategyTitle: 'Machine Learning: Lorentzian Classification',
-      // shortStrategyTitle: 'Lorentzian Classification',
-      const strategyData = await this.getStrategyData({
-        strategyTitle: 'Machine Learning Adaptive SuperTrend [AlgoAlpha]',
-        shortStrategyTitle: 'AlgoAlpha - 🤖 Adaptive SuperTrend',
-        $,
-      });
-      console.log('strategyData:', strategyData);
-
-      await this.utilsService.waitSeconds(1000);
-    } else {
-      this.coloredLog(ELogColor.FgRed, `Your are not logged!`);
-    }
+    await this.utilsService.waitSeconds(1000);
 
     // await this.browser.close();
 
@@ -157,13 +223,31 @@ export class WebScraperService implements OnModuleInit {
 
   async selectSymbol(symbol: string, exchange: string, $: cheerio.CheerioAPI) {
     const domSelector = '#header-toolbar-symbol-search';
-
+    await this.page.waitForSelector(domSelector, {
+      visible: true,
+      timeout: 60000,
+    });
     await this.page.click(domSelector);
-    await this.utilsService.waitSeconds(1000);
 
-    await this.page.type('[data-role="search"]', symbol);
+    const symbolSearchItemsDialogSelector =
+      '[data-name="symbol-search-dialog-content-item"]';
+    const initialCount = await this.page.$$eval(
+      symbolSearchItemsDialogSelector,
+      (els) => els.length,
+    );
 
-    await this.utilsService.waitSeconds(1000);
+    const dataRoleSearchSelector = '[data-role="search"]';
+    await this.page.waitForSelector(dataRoleSearchSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+    await this.page.type(dataRoleSearchSelector, symbol);
+
+    await this.waitForItemCountChange(
+      this.page,
+      symbolSearchItemsDialogSelector,
+      initialCount,
+    );
 
     const textToFound = exchange;
     await this.clickElementByText(
@@ -172,8 +256,6 @@ export class WebScraperService implements OnModuleInit {
       '[data-role="list-item"]',
       '[data-name="symbol-search-items-dialog"]',
     );
-
-    await this.utilsService.waitSeconds(1000);
 
     const newHtml = await this.page.content();
     $ = cheerio.load(newHtml);
@@ -187,9 +269,11 @@ export class WebScraperService implements OnModuleInit {
 
   async selectInterval(interval: ChartInterval, $: cheerio.CheerioAPI) {
     const domSelector = '#header-toolbar-intervals';
-
+    await this.page.waitForSelector(domSelector, {
+      visible: true,
+      timeout: 60000,
+    });
     await this.page.click(domSelector);
-    await this.utilsService.waitSeconds(1000);
 
     await this.page.evaluate((targetInterval) => {
       const container = document.querySelector(
@@ -204,8 +288,6 @@ export class WebScraperService implements OnModuleInit {
         (item as HTMLElement).click();
       }
     }, interval);
-
-    await this.utilsService.waitSeconds(1000);
 
     const newHtml = await this.page.content();
     $ = cheerio.load(newHtml);
@@ -222,42 +304,170 @@ export class WebScraperService implements OnModuleInit {
     const { strategyTitle, shortStrategyTitle, $, attempt = 1 } = params;
     const maxAttempts = 5;
 
-    if ($('[data-name="widgetbar-pages-with-tabs"]').length === 0) {
-      await this.page.click(
-        '[data-name="right-toolbar"] [data-name="object_tree"]',
+    const rightToolbarSelector = '[data-name="right-toolbar"]';
+    const objectTreeButtonSelector = `${rightToolbarSelector} [data-name="object_tree"]`;
+
+    await this.page.waitForSelector(objectTreeButtonSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+
+    const unionObjectTreeWidgetSwitcherSelector =
+      '#union-object-tree-widget-switcher';
+
+    const objectTreeButtonEl = await this.page.$(objectTreeButtonSelector);
+    if (objectTreeButtonEl) {
+      const isPressed = await this.page.evaluate(
+        (el) => el.getAttribute('aria-pressed'),
+        objectTreeButtonEl,
       );
-      await this.utilsService.waitSeconds(1000);
+      const isNotPressed = isPressed === 'false';
+      // const switcherNotPresent =
+      //   $(unionObjectTreeWidgetSwitcherSelector).length === 0;
+      // console.log(
+      //   'objectTreeButtonEl isNotPressed',
+      //   isNotPressed,
+      //   '||',
+      //   'switcherNotPresent',
+      //   switcherNotPresent,
+      //   '(' + $(unionObjectTreeWidgetSwitcherSelector).length + ')',
+      // );
+      if (isNotPressed) {
+        // || switcherNotPresent
+        // console.log('objectTreeButtonEl.click()');
+        await objectTreeButtonEl.click();
+      }
     }
 
-    if ($('.chart-data-window').length === 0) {
-      await this.page.click(
-        '#union-object-tree-widget-switcher button#data-window',
-      );
-      await this.utilsService.waitSeconds(1000);
+    await this.page.waitForSelector(unionObjectTreeWidgetSwitcherSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+
+    const chartDataWindowSelector = '.chart-data-window';
+    // console.log(
+    //   "$('.chart-data-window').length",
+    //   $(chartDataWindowSelector).length,
+    // );
+    if ($(chartDataWindowSelector).length === 0) {
+      const switcherButtonSelector = `${unionObjectTreeWidgetSwitcherSelector} button#data-window`;
+
+      // console.log('click to switch');
+      await this.page.click(switcherButtonSelector);
+
+      await this.page.waitForSelector(chartDataWindowSelector, {
+        visible: true,
+        timeout: 60000,
+      });
     }
 
     const item = await this.page.evaluate(
-      (title, shortTitle) => {
+      async (title, shortTitle) => {
+        // Regarder les logs dans la Chrome DevTools console
+        const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
         const container = document.querySelector(
           '.chart-data-window [role="treegrid"]',
         );
         if (!container) return null;
 
         const menuItems = container.querySelectorAll('[data-role="menuitem"]');
-        const match = Array.from(menuItems).find((el) => {
+        const index = Array.from(menuItems).findIndex((el) => {
           const text = el.textContent?.trim();
           return text?.includes(title) || text?.includes(shortTitle);
         });
 
-        return match ? match.outerHTML : null;
+        let btnClicked = false;
+        const match = menuItems[index];
+        if (match) {
+          const hasHiddenClass = Array.from(match.classList).some((cls) =>
+            cls.startsWith('hidden-'),
+          );
+
+          const secondDiv = match.querySelector('div:nth-child(2)');
+          const hasValuesClass = secondDiv
+            ? Array.from(secondDiv.classList).some((cls) =>
+                cls.startsWith('values-'),
+              )
+            : false;
+
+          // console.log(
+          //   hasHiddenClass
+          //     ? '❌ Classe hidden-* trouvée. => On doit cliquer'
+          //     : '✅ Classe hidden-* absente.',
+          // );
+          // console.log(
+          //   hasValuesClass
+          //     ? '✅ Deuxième div avec classe values-* trouvée.'
+          //     : '❌ Deuxième div avec classe values-* absente. => On doit cliquer',
+          // );
+
+          if (hasHiddenClass || !hasValuesClass) {
+            const button = match.querySelector('button');
+            if (button) {
+              btnClicked = true;
+              // console.log(
+              //   '👆 Click sur le bouton car hidden-* ou values-* manquant',
+              // );
+              button.click();
+            }
+          } else {
+            // console.log(
+            //   '🚫 Ni hidden-*, ni absence de values-* : pas de clic.',
+            // );
+          }
+        }
+
+        if (btnClicked) {
+          let retries = 20;
+          while (retries-- > 0) {
+            // console.log('retries', retries);
+            const matchItem = Array.from(
+              document.querySelectorAll(
+                '.chart-data-window [role="treegrid"] [data-role="menuitem"]',
+              ),
+            ).find((el) => {
+              const text = el.textContent?.trim();
+              return text?.includes(title) || text?.includes(shortTitle);
+            });
+
+            const secondDiv = matchItem.querySelector('div:nth-child(2)');
+            // const hasSecondDiv = !!secondDiv;
+            // console.log('after click => hasSecondDiv', hasSecondDiv);
+
+            const hasValuesClass = secondDiv
+              ? Array.from(secondDiv.classList).some((cls) =>
+                  cls.startsWith('values-'),
+                )
+              : false;
+            // console.log('after click => hasValuesClass', hasValuesClass);
+
+            if (hasValuesClass) {
+              break;
+            }
+
+            await sleep(250);
+          }
+        }
+
+        // INFO: Renvoyer uniquement des valeurs sérialisables : string, number, boolean, null, object/array simples.
+        return match
+          ? {
+              index,
+              outerHTML: match.outerHTML,
+              btnClicked,
+            }
+          : null;
       },
       strategyTitle,
       shortStrategyTitle,
     );
 
+    // console.log('Data Window item:', !!item);
+
     let result = [];
     if (item) {
-      result = this.parseHtmlToJson(item);
+      result = this.parseHtmlToJson(item.outerHTML);
     } else {
       await this.selectIndicator({
         strategyTitle,
@@ -269,8 +479,9 @@ export class WebScraperService implements OnModuleInit {
     if (result.length > 0) {
       return result;
     } else if (attempt < maxAttempts) {
-      console.log(`getStrategyData RETRY #${attempt} — waiting 1s...`);
-      await this.utilsService.waitSeconds(1000);
+      const waitMs = 1000;
+      console.log(`getStrategyData RETRY #${attempt} — waiting ${waitMs}ms...`);
+      await this.utilsService.waitSeconds(waitMs);
       return await this.getStrategyData({
         strategyTitle,
         $,
@@ -283,6 +494,12 @@ export class WebScraperService implements OnModuleInit {
   }
 
   async cleanIndicators() {
+    const removeAllDrawingToolsSelector = '[data-name="removeAllDrawingTools"]';
+    await this.page.waitForSelector(removeAllDrawingToolsSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+
     await this.page.evaluate(() => {
       const container = document.querySelector(
         '[data-name="removeAllDrawingTools"]',
@@ -298,13 +515,14 @@ export class WebScraperService implements OnModuleInit {
       }
     });
 
-    await this.utilsService.waitSeconds(1000);
+    const popupMenuContainerButtonSelector =
+      '#overlap-manager-root [data-name="popup-menu-container"] [data-name="menu-inner"] [data-name="remove-studies"]';
+    await this.page.waitForSelector(popupMenuContainerButtonSelector, {
+      visible: true,
+      timeout: 60000,
+    });
 
-    await this.page.click(
-      '#overlap-manager-root [data-name="popup-menu-container"] [data-name="menu-inner"] [data-name="remove-studies"]',
-    );
-
-    await this.utilsService.waitSeconds(1000);
+    await this.page.click(popupMenuContainerButtonSelector);
   }
 
   async selectIndicator(params: GetStrategyDataParams) {
@@ -312,17 +530,41 @@ export class WebScraperService implements OnModuleInit {
     let $ = params.$;
 
     await this.cleanIndicators();
-    await this.utilsService.waitSeconds(1000);
 
-    await this.page.click('[data-name="open-indicators-dialog"]');
-    await this.utilsService.waitSeconds(1000);
-
-    await this.page.type(
-      '[data-name="indicators-dialog"] [data-role="search"]',
-      strategyTitle,
+    await this.page.waitForSelector('#header-toolbar-indicators', {
+      visible: true,
+      timeout: 60000,
+    });
+    await this.page.click(
+      '#header-toolbar-indicators [data-name="open-indicators-dialog"]',
     );
 
-    await this.utilsService.waitSeconds(1000);
+    const indicatorsDialogContentSelector =
+      '[data-name="indicators-dialog"] [data-role="dialog-content"]';
+    await this.page.waitForSelector(indicatorsDialogContentSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+
+    const indicatorSearchItemsDialogSelector = `${indicatorsDialogContentSelector} [data-role="list-item"]`;
+    const initialCount = await this.page.$$eval(
+      indicatorSearchItemsDialogSelector,
+      (els) => els.length,
+    );
+
+    const indicatorsDialogSearchSelector =
+      '[data-name="indicators-dialog"] [data-role="search"]';
+    await this.page.waitForSelector(indicatorsDialogSearchSelector, {
+      visible: true,
+      timeout: 60000,
+    });
+    await this.page.type(indicatorsDialogSearchSelector, strategyTitle);
+
+    await this.waitForItemCountChange(
+      this.page,
+      indicatorSearchItemsDialogSelector,
+      initialCount,
+    );
 
     const textToFound = strategyTitle;
     await this.clickElementByText(
@@ -332,32 +574,42 @@ export class WebScraperService implements OnModuleInit {
       '[data-name="indicators-dialog"] [data-role="dialog-content"]',
     );
 
-    await this.utilsService.waitSeconds(1000);
+    const indicatorTitleSelector =
+      '.chart-markup-table [data-name="legend-source-title"]';
+    const initialTitleCount = await this.page.$$eval(
+      indicatorTitleSelector,
+      (els) => els.length,
+    );
 
     await this.page.click(
       '[data-name="indicators-dialog"] [data-name="close"]',
     );
 
-    await this.utilsService.waitSeconds(1000);
+    await this.waitForItemCountChange(
+      this.page,
+      indicatorTitleSelector,
+      initialTitleCount,
+    );
 
     const newHtml = await this.page.content();
     $ = cheerio.load(newHtml);
 
-    $('.chart-markup-table [data-name="legend-source-title"]').each(
-      (index, el) => {
-        const text = $(el).text().trim();
+    const titlesToCheck = [shortStrategyTitle, strategyTitle];
+    $(indicatorTitleSelector).each((_, el) => {
+      const text = $(el).text().trim();
 
-        if (text === shortStrategyTitle) {
+      for (const title of titlesToCheck) {
+        if (text === title) {
+          console.log(`✅ Exact match found for strategy title: "${title}"`);
+          return;
+        } else if (text.includes(title)) {
           console.log(
-            `✅ Exact match found for strategy title: "${shortStrategyTitle}"`,
+            `☑ Partial match found for strategy title: "${title}" in "${text}"`,
           );
-        } else if (text.includes(shortStrategyTitle)) {
-          console.log(
-            `☑ Partial match found for strategy title: "${shortStrategyTitle}" in "${text}"`,
-          );
+          return;
         }
-      },
-    );
+      }
+    });
   }
 
   /**
@@ -415,5 +667,35 @@ export class WebScraperService implements OnModuleInit {
       },
       { text, selector, containerSelector },
     );
+  }
+
+  /**
+   * Waits for the number of elements matching a selector to change from an initial count.
+   *
+   * @param page - The Puppeteer Page instance.
+   * @param selector - The CSS selector of the elements to watch.
+   * @param initialCount - The initial number of elements to compare against.
+   * @param timeout - Maximum time to wait in milliseconds (default: 10 seconds).
+   * @param pollingInterval - Interval between checks in milliseconds (default: 200ms).
+   * @returns Resolves to `true` if the count changes before timeout, otherwise `false`.
+   */
+  async waitForItemCountChange(
+    page: Page,
+    selector: string,
+    initialCount: number,
+    timeout = 10000,
+    pollingInterval = 200,
+  ): Promise<boolean> {
+    const start = Date.now();
+
+    while (Date.now() - start < timeout) {
+      const currentCount = await page.$$eval(selector, (els) => els.length);
+      if (currentCount !== initialCount) {
+        return true; // ✅ Le nombre a changé
+      }
+      await new Promise((r) => setTimeout(r, pollingInterval));
+    }
+
+    return false; // ❌ Timeout sans changement
   }
 }
