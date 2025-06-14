@@ -1,8 +1,11 @@
 import { CheerioAPI } from 'cheerio';
 
-export interface GetStrategyDataParams {
+export interface StrategyTitleParams {
   strategyTitle: string;
-  $: CheerioAPI;
   shortStrategyTitle?: string;
+}
+
+export interface GetStrategyDataParams extends StrategyTitleParams {
+  $: CheerioAPI;
   attempt?: number;
 }

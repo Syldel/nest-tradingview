@@ -6,15 +6,17 @@ import { executablePath } from 'puppeteer';
 import * as cheerio from 'cheerio';
 import { ELogColor, UtilsService } from '@services/utils.service';
 
-import { ChartInterval } from '../types/chart.type';
+import { ChartInterval, chartIntervalMap } from '../types/chart.type';
 import { GetStrategyDataParams } from '../types/strategy-data.type';
 import { CookiesService } from '../cookies/cookies.service';
+import { StrategyDataDto } from './dto/strategy-data.dto';
 
 @Injectable()
 export class WebScraperService implements OnModuleInit {
   private page: Page;
   private browser: Browser;
   private scraperTargetUrl: string;
+  private pageReadyTimestamp: number;
 
   private isProduction = process.env.NODE_ENV === 'production';
 
@@ -42,8 +44,6 @@ export class WebScraperService implements OnModuleInit {
 
     console.log('★ Init Puppeteer');
     await this.initPuppeteer();
-
-    await this.scrape(this.scraperTargetUrl);
   }
 
   async initPuppeteer() {
@@ -146,7 +146,8 @@ export class WebScraperService implements OnModuleInit {
     );
   }
 
-  async scrape(url: string): Promise<any> {
+  async loadWebPage() {
+    const url = this.scraperTargetUrl;
     console.log(`Launching browser to scrape: ${url}`);
 
     await this.page.goto(url, {
@@ -194,31 +195,36 @@ export class WebScraperService implements OnModuleInit {
     await this.page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
     console.log('✅ -------[NETWORK IS IDLE]-------');
 
-    const content = await this.page.content();
+    this.pageReadyTimestamp = Date.now();
 
+    return this.page;
+  }
+
+  async getStrategyData(params: StrategyDataDto) {
+    const { symbol, exchange, interval, strategyTitle, shortStrategyTitle } =
+      params;
+
+    if (!this.page || !this.pageReadyTimestamp) {
+      await this.loadWebPage();
+    }
+
+    const content = await this.page.content();
     const $ = cheerio.load(content);
 
-    /* ******************************************************** */
-    await this.selectSymbol('ETHEUR', 'Kraken', $);
+    const symbolSuccess = await this.selectSymbol(symbol, exchange, $);
+    if (!symbolSuccess) {
+      throw new Error('Failed to choose symbol');
+    }
+    const intervalSuccess = await this.selectInterval(interval, $);
+    if (!intervalSuccess) {
+      throw new Error('Failed to choose interval');
+    }
 
-    await this.selectInterval('1D', $);
-
-    // 'Volume SuperTrend AI (Expo)'
-    // 'Machine Learning Adaptive SuperTrend [AlgoAlpha]', 'AlgoAlpha - 🤖 Adaptive SuperTrend'
-    // 'Machine Learning: kNN-based Strategy (update)'
-    // 'Machine Learning: Lorentzian Classification', 'Lorentzian Classification'
-    const strategyData = await this.getStrategyData({
-      strategyTitle: 'Volume SuperTrend AI (Expo)',
-      shortStrategyTitle: null,
+    return this.extractStrategyData({
+      strategyTitle,
+      shortStrategyTitle,
       $,
     });
-    console.log('strategyData:', strategyData);
-
-    await this.utilsService.waitSeconds(1000);
-
-    // await this.browser.close();
-
-    return;
   }
 
   async selectSymbol(symbol: string, exchange: string, $: cheerio.CheerioAPI) {
@@ -250,12 +256,25 @@ export class WebScraperService implements OnModuleInit {
     );
 
     const textToFound = exchange;
-    await this.clickElementByText(
+    const clickedResult = await this.clickElementByText(
       this.page,
       textToFound,
       '[data-role="list-item"]',
       '[data-name="symbol-search-items-dialog"]',
     );
+
+    if (clickedResult) {
+      await this.page.waitForFunction(
+        (expectedSymbol) => {
+          return document
+            .querySelector('#header-toolbar-symbol-search')
+            ?.textContent?.toUpperCase()
+            ?.includes(expectedSymbol.toUpperCase());
+        },
+        {},
+        symbol,
+      );
+    }
 
     const newHtml = await this.page.content();
     $ = cheerio.load(newHtml);
@@ -273,7 +292,28 @@ export class WebScraperService implements OnModuleInit {
       visible: true,
       timeout: 60000,
     });
-    await this.page.click(domSelector);
+
+    if ($(domSelector).text() === chartIntervalMap[interval]) {
+      console.log(
+        'Selected interval:',
+        this.coloredText(ELogColor.FgYellow, $(domSelector).text()),
+        '(already selected)',
+      );
+      return true;
+    }
+
+    // await this.page.click(domSelector);
+    await this.page.evaluate((selector) => {
+      const el = document.querySelector(selector)?.querySelector('button');
+      if (el) {
+        (el as HTMLElement).click();
+      }
+    }, domSelector);
+
+    await this.page.waitForSelector('[data-name="popup-menu-container"]', {
+      visible: true,
+      timeout: 60000,
+    });
 
     await this.page.evaluate((targetInterval) => {
       const container = document.querySelector(
@@ -297,12 +337,12 @@ export class WebScraperService implements OnModuleInit {
       this.coloredText(ELogColor.FgYellow, $(domSelector).text()),
     );
 
-    return $(domSelector).text();
+    return $(domSelector).text() === chartIntervalMap[interval];
   }
 
-  async getStrategyData(params: GetStrategyDataParams) {
+  async extractStrategyData(params: GetStrategyDataParams) {
     const { strategyTitle, shortStrategyTitle, $, attempt = 1 } = params;
-    const maxAttempts = 5;
+    const maxAttempts = 7;
 
     const rightToolbarSelector = '[data-name="right-toolbar"]';
     const objectTreeButtonSelector = `${rightToolbarSelector} [data-name="object_tree"]`;
@@ -480,9 +520,11 @@ export class WebScraperService implements OnModuleInit {
       return result;
     } else if (attempt < maxAttempts) {
       const waitMs = 1000;
-      console.log(`getStrategyData RETRY #${attempt} — waiting ${waitMs}ms...`);
+      console.log(
+        `extractStrategyData RETRY #${attempt} — waiting ${waitMs}ms...`,
+      );
       await this.utilsService.waitSeconds(waitMs);
-      return await this.getStrategyData({
+      return await this.extractStrategyData({
         strategyTitle,
         $,
         shortStrategyTitle,
@@ -490,7 +532,7 @@ export class WebScraperService implements OnModuleInit {
       });
     }
 
-    throw new Error(`getStrategyData failed after ${maxAttempts} attempts`);
+    throw new Error(`extractStrategyData failed after ${maxAttempts} attempts`);
   }
 
   async cleanIndicators() {
@@ -653,12 +695,11 @@ export class WebScraperService implements OnModuleInit {
         const scope = containerSelector
           ? document.querySelector(containerSelector)
           : document;
-
         if (!scope) return false;
 
         const elements = scope.querySelectorAll(selector);
         for (const el of elements) {
-          if (el.textContent?.includes(text)) {
+          if (el.textContent?.toLowerCase().includes(text.toLowerCase())) {
             (el as HTMLElement).click();
             return true;
           }
