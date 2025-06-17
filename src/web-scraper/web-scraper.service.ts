@@ -261,7 +261,11 @@ export class WebScraperService {
       visible: true,
       timeout: 60000,
     });
-    await this.page.click(domSelector);
+
+    if ($('[data-name="symbol-search-items-dialog"]').length == 0) {
+      // Open dialog
+      await this.page.click(domSelector);
+    }
 
     const symbolSearchItemsDialogSelector =
       '[data-name="symbol-search-dialog-content-item"]';
