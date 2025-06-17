@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import puppeteer, { Browser, LaunchOptions, Page } from 'puppeteer';
@@ -12,11 +12,13 @@ import { CookiesService } from '../cookies/cookies.service';
 import { StrategyDataDto } from './dto/strategy-data.dto';
 
 @Injectable()
-export class WebScraperService implements OnModuleInit {
+export class WebScraperService {
   private page: Page;
   private browser: Browser;
   private scraperTargetUrl: string;
-  private pageReadyTimestamp: number;
+
+  private lastActivityTimestamp: number;
+  private inactivityCheckInterval: NodeJS.Timeout;
 
   private isProduction = process.env.NODE_ENV === 'production';
 
@@ -35,19 +37,9 @@ export class WebScraperService implements OnModuleInit {
       this.configService.get<string>('SCRAPER_TARGET_URL');
   }
 
-  onModuleInit() {
-    this.start();
-  }
-
-  public async start() {
-    await this.utilsService.waitSeconds(1000);
-
+  async launchBrowser() {
     console.log('★ Init Puppeteer');
-    await this.initPuppeteer();
-  }
-
-  async initPuppeteer() {
-    console.log('executablePath:', executablePath());
+    // console.log('executablePath:', executablePath());
     let options: LaunchOptions;
     if (this.isProduction) {
       options = {
@@ -115,6 +107,8 @@ export class WebScraperService implements OnModuleInit {
     if (this.configService.get<string>('EMULATE_SLOW_NETWORK')) {
       await this.emulateSlowNetwork(this.page);
     }
+
+    this.startInactivityMonitor();
   }
 
   async emulateSlowNetwork(
@@ -195,16 +189,50 @@ export class WebScraperService implements OnModuleInit {
     await this.page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
     console.log('✅ -------[NETWORK IS IDLE]-------');
 
-    this.pageReadyTimestamp = Date.now();
-
     return this.page;
+  }
+
+  async closeBrowser() {
+    try {
+      if (this.page) {
+        await this.page.close();
+        this.page = null;
+        console.log('■ Page closed.');
+      }
+      if (this.browser) {
+        await this.browser.close();
+        this.browser = null;
+        console.log('■ Browser closed.');
+      }
+    } catch (error) {
+      console.error('❌ Error closing browser:', error);
+    }
+  }
+
+  private startInactivityMonitor() {
+    if (this.inactivityCheckInterval) return;
+
+    this.inactivityCheckInterval = setInterval(async () => {
+      const inactivityDuration =
+        Date.now() - (this.lastActivityTimestamp ?? Date.now());
+
+      if (inactivityDuration > 3 * 60 * 1000) {
+        await this.closeBrowser();
+        clearInterval(this.inactivityCheckInterval!);
+        this.inactivityCheckInterval = null;
+        this.lastActivityTimestamp = null;
+      }
+    }, 30 * 1000);
   }
 
   async getStrategyData(params: StrategyDataDto) {
     const { symbol, exchange, interval, strategyTitle, shortStrategyTitle } =
       params;
 
-    if (!this.page || !this.pageReadyTimestamp) {
+    this.lastActivityTimestamp = Date.now();
+
+    if (!this.browser || !this.page) {
+      await this.launchBrowser();
       await this.loadWebPage();
     }
 
