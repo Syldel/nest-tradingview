@@ -2,7 +2,7 @@
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
 
-<p align="left"><a href="https://www.typescriptlang.org/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/TypeScript.svg" alt="TypeScript" height="60" /></a><a href="https://graphql.org" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/GraphQL-Dark.svg" alt="Graphql" height="60" /></a><a href="https://www.apollographql.com/docs/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Apollo.svg" alt="apollo" width="60" height="60"/></a><a href="https://www.mongodb.com/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/MongoDB.svg" alt="mongodb" width="60" height="60"/></a><a href="https://nodejs.org/en/docs/" target="_blank"><img height="60" src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/NodeJS-Dark.svg" /></a><a href="https://eslint.org/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Eslint-Dark.svg" alt="eslint" width="60" height="60"/></a><a href="https://jestjs.io/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Jest.svg" alt="jest" width="60" height="60"/></a><a href="https://www.npmjs.com/~jpb06" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Npm-Dark.svg" alt="npm" width="60" height="60"/></a><a href="https://www.markdownguide.org/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Markdown-Dark.svg" alt="markdown" height="60" /></a><a href="https://prettier.io/docs/en/index.html" target="_blank"><img height="60" src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Prettier-Dark.svg" /></a></p>
+<p align="left"><a href="https://www.typescriptlang.org/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/TypeScript.svg" alt="TypeScript" height="60" /></a><a href="https://www.mongodb.com/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/MongoDB.svg" alt="mongodb" width="60" height="60"/></a><a href="https://nodejs.org/en/docs/" target="_blank"><img height="60" src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/NodeJS-Dark.svg" /></a><a href="https://eslint.org/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Eslint-Dark.svg" alt="eslint" width="60" height="60"/></a><a href="https://jestjs.io/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Jest.svg" alt="jest" width="60" height="60"/></a><a href="https://www.npmjs.com/~jpb06" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Npm-Dark.svg" alt="npm" width="60" height="60"/></a><a href="https://www.markdownguide.org/" target="_blank"><img src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Markdown-Dark.svg" alt="markdown" height="60" /></a><a href="https://prettier.io/docs/en/index.html" target="_blank"><img height="60" src="https://raw.githubusercontent.com/jpb06/jpb06/master/icons/Prettier-Dark.svg" /></a></p>
 
 ## Description
 
@@ -40,6 +40,61 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## 📘 Web Scraper API Documentation
+
+### 📌 Endpoint: `POST /web-scraper/strategy-data`
+
+Retrieve trading strategy data from TradingView via Puppeteer scraping.
+
+---
+
+#### 🔐 Authentication
+
+All requests **must** include an API key in the header:
+
+| Header Name | Example Value        |
+|-------------|----------------------|
+| `x-api-key` | `sk-1234567890abcdef` |
+
+---
+
+#### 📨 Request
+
+- **Method**: `POST`
+- **URL**: `http://localhost:3000/web-scraper/strategy-data`
+- **Content-Type**: `application/json`
+
+##### 📂 Request Body Parameters
+
+| Parameter            | Type   | Required | Description                                |
+|----------------------|--------|----------|--------------------------------------------|
+| `symbol`             | string | ✅       | Trading pair symbol (e.g., `BTCUSDT`)      |
+| `exchange`           | string | ✅       | Exchange name (e.g., `BINANCE`)            |
+| `interval`           | string | ✅       | Chart interval (e.g., `60`, `240`, `1D`)   |
+| `strategyTitle`      | string | ✅       | Full strategy title for exact matching     |
+| `shortStrategyTitle` | string | ❌       | Short version of the strategy title        |
+
+---
+
+#### 📦 Example Request with cURL
+
+```bash
+curl -X POST http://localhost:3000/web-scraper/strategy-data \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: sk-1234567890abcdef" \
+  -d '{
+    "symbol": "BTCUSDT",
+    "exchange": "BINANCE",
+    "interval": "120",
+    "strategyTitle": "My Awesome Strategy",
+    "shortStrategyTitle": "AwesomeStrat"
+  }'
+```
+
+```bash
+curl -X POST http://localhost:3003/web-scraper/strategy-data -H "Content-Type: application/json" -H "x-api-key: ton_api_key_ultra_secrete" -d "{\"symbol\":\"XRPUSDT\",\"exchange\":\"KUCOIN\",\"interval\":\"120\",\"strategyTitle\":\"Machine Learning: Lorentzian Classification\",\"shortStrategyTitle\":\"Lorentzian Classification\"}"
+```
+
 ## Madge
 
 Madge is a developer tool for generating a visual graph of your module dependencies, finding circular dependencies, and giving you other useful info.
@@ -51,10 +106,6 @@ npm install -g madge
 ```bash
 madge --circular src/app.module.ts
 ```
-
-## GraphQL
-
-<img src="https://graphql.org/_next/static/media/logo.ad338028.svg" alt="GraphQL Logo" width="100" />
 
 ## Mongosh - Accédez et Gérez Votre Base de Données MongoDB
 
@@ -161,6 +212,8 @@ function getCookiesDetails() {
 getCookiesDetails();
 ```
 
+You must manually set the "HttpOnly" and "Secure" values.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
@@ -173,30 +226,3 @@ $ mau deploy
 ```
 
 With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
