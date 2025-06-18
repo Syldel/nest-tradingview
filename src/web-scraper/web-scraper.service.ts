@@ -104,7 +104,7 @@ export class WebScraperService {
 
     await this.page.setUserAgent(randomUserAgent);
 
-    if (this.configService.get<string>('EMULATE_SLOW_NETWORK')) {
+    if (this.configService.get<boolean>('EMULATE_SLOW_NETWORK') === true) {
       await this.emulateSlowNetwork(this.page);
     }
 
@@ -386,9 +386,42 @@ export class WebScraperService {
     return $(domSelector).text() === chartIntervalMap[interval];
   }
 
+  async disableAllCurrentIndicators() {
+    await this.page.waitForSelector(
+      '[data-name="pane-widget-chart-gui-wrapper"]',
+      {
+        visible: true,
+        timeout: 60000,
+      },
+    );
+
+    await this.page.$$eval(
+      '[data-name="pane-widget-chart-gui-wrapper"] [data-name="legend-source-item"] .normal-eye',
+      (elements) => {
+        let count = 0;
+        elements.forEach((el) => {
+          const style = window.getComputedStyle(el);
+          if (style.display !== 'none') {
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            count++;
+          }
+        });
+        return count;
+      },
+    );
+
+    await this.utilsService.waitSeconds(100);
+  }
+
   async extractStrategyData(params: GetStrategyDataParams) {
     const { strategyTitle, shortStrategyTitle, $, attempt = 1 } = params;
     const maxAttempts = 7;
+
+    if (attempt === 1) {
+      await this.disableAllCurrentIndicators();
+    }
 
     const rightToolbarSelector = '[data-name="right-toolbar"]';
     const objectTreeButtonSelector = `${rightToolbarSelector} [data-name="object_tree"]`;

@@ -46,7 +46,10 @@ export class UtilsService {
     console.log(this.coloredText(color, text));
   }
 
-  public async waitSeconds(ms: number) {
+  public async waitSeconds(ms: number, showLog = false) {
+    if (showLog) {
+      console.log(`Wait ${ms}ms...`);
+    }
     await firstValueFrom(timer(ms).pipe(take(1)));
   }
 
