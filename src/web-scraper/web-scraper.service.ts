@@ -279,7 +279,21 @@ export class WebScraperService {
       visible: true,
       timeout: 60000,
     });
-    await this.page.type(dataRoleSearchSelector, symbol);
+    // Get search input current text
+    // const searchInputValue = await this.page.$eval(
+    //   dataRoleSearchSelector,
+    //   (input: HTMLInputElement) => input.value,
+    // );
+    // console.log('search input current text:', searchInputValue);
+
+    // Reset input
+    await this.page.$eval(dataRoleSearchSelector, (input: HTMLInputElement) => {
+      input.value = '';
+    });
+
+    await this.page.type(dataRoleSearchSelector, `${exchange}:${symbol}`, {
+      delay: 100,
+    });
 
     await this.waitForItemCountChange(
       this.page,
