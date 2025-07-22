@@ -1,9 +1,12 @@
 import { NestFactory } from '@nestjs/core';
+import { LogLevel } from '@nestjs/common';
 
 import { AppModule } from './app.module';
+import { CustomLogger } from '@services/custom-logger.service';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const logger = new CustomLogger();
+  const app = await NestFactory.create(AppModule, { logger });
 
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -23,8 +26,17 @@ async function bootstrap() {
 
   /* ********************************************** */
 
+  const levels: LogLevel[] = isProduction
+    ? ['error', 'warn']
+    : ['log', 'debug', 'warn', 'error'];
+
+  logger.setLogLevels(levels);
+  app.useLogger(levels);
+
+  /* ********************************************** */
+
   const port = parseInt(process.env.PORT || '') || 3000;
   await app.listen(port);
-  console.log(`✨ App running on http://localhost:${port}`);
+  logger.log(`✨ App running on http://localhost:${port}`, 'Bootstrap');
 }
 bootstrap();

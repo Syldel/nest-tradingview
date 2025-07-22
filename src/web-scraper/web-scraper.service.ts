@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import puppeteer, { Browser, LaunchOptions, Page } from 'puppeteer';
 import { executablePath } from 'puppeteer';
 import * as cheerio from 'cheerio';
+
 import { ELogColor, UtilsService } from '@services/utils.service';
 
 import { ChartInterval, chartIntervalMap } from '../types/chart.type';
@@ -13,6 +14,8 @@ import { StrategyDataDto } from './dto/strategy-data.dto';
 
 @Injectable()
 export class WebScraperService {
+  private readonly logger = new Logger(WebScraperService.name);
+
   private page: Page;
   private browser: Browser;
   private scraperTargetUrl: string;
@@ -21,9 +24,6 @@ export class WebScraperService {
   private inactivityCheckInterval: NodeJS.Timeout;
 
   private isProduction = process.env.NODE_ENV === 'production';
-
-  private coloredLog = (color: ELogColor, text: string) =>
-    this.utilsService.coloredLog(color, text);
 
   private coloredText = (color: ELogColor, text: string) =>
     this.utilsService.coloredText(color, text);
@@ -38,8 +38,8 @@ export class WebScraperService {
   }
 
   async launchBrowser() {
-    console.log('★ Init Puppeteer');
-    // console.log('executablePath:', executablePath());
+    this.logger.log('★ Init Puppeteer');
+    // this.logger.log('executablePath:', executablePath());
     let options: LaunchOptions;
     if (this.isProduction) {
       options = {
@@ -54,7 +54,7 @@ export class WebScraperService {
 
     // Définir les cookies d'authentification
     const rawCookies = await this.cookiesService.findAll();
-    console.log('Cookies from database:', rawCookies.length);
+    this.logger.log('Cookies from database:', rawCookies.length);
 
     const cookieData = rawCookies
       .filter(
@@ -97,7 +97,7 @@ export class WebScraperService {
 
     const randomUserAgent =
       userAgents[Math.floor(Math.random() * userAgents.length)];
-    console.log(
+    this.logger.log(
       'Random User-Agent:',
       this.coloredText(ELogColor.FgMagenta, randomUserAgent),
     );
@@ -131,7 +131,7 @@ export class WebScraperService {
       latency: options.latencyMs,
     });
 
-    console.log(
+    this.logger.log(
       `⚠ Slow network emulation → ${
         options.offline
           ? 'Offline'
@@ -142,7 +142,7 @@ export class WebScraperService {
 
   async loadWebPage() {
     const url = this.scraperTargetUrl;
-    console.log(`Launching browser to scrape: ${url}`);
+    this.logger.log(`Launching browser to scrape: ${url}`);
 
     await this.page.goto(url, {
       waitUntil: 'domcontentloaded',
@@ -153,7 +153,7 @@ export class WebScraperService {
       visible: true,
       timeout: 60000,
     });
-    console.log('✅ .js-rootresizer__contents displayed!');
+    this.logger.log('✅ .js-rootresizer__contents displayed!');
 
     await this.page.waitForSelector(
       '.layout__area--top #header-toolbar-symbol-search',
@@ -162,13 +162,13 @@ export class WebScraperService {
         timeout: 60000,
       },
     );
-    console.log('✅ #header-toolbar-symbol-search displayed!');
+    this.logger.log('✅ #header-toolbar-symbol-search displayed!');
 
     await this.page.waitForSelector('.layout__area--left #drawing-toolbar', {
       visible: true,
       timeout: 60000,
     });
-    console.log('✅ #drawing-toolbar displayed!');
+    this.logger.log('✅ #drawing-toolbar displayed!');
 
     await this.page.waitForSelector(
       '.layout__area--topleft [data-role="button"]',
@@ -177,17 +177,17 @@ export class WebScraperService {
         timeout: 60000,
       },
     );
-    console.log('✅ Top left button displayed!');
+    this.logger.log('✅ Top left button displayed!');
 
     await this.page.waitForSelector('#footer-chart-panel', {
       visible: true,
       timeout: 60000,
     });
-    console.log('✅ #footer-chart-panel displayed!');
+    this.logger.log('✅ #footer-chart-panel displayed!');
 
     // On attend que le réseau soit inactif (ex: AJAX terminé)
     await this.page.waitForNetworkIdle({ idleTime: 500, timeout: 60000 });
-    console.log('✅ -------[NETWORK IS IDLE]-------');
+    this.logger.log('✅ -------[NETWORK IS IDLE]-------');
 
     return this.page;
   }
@@ -197,15 +197,15 @@ export class WebScraperService {
       if (this.page) {
         await this.page.close();
         this.page = null;
-        console.log('■ Page closed.');
+        this.logger.log('■ Page closed.');
       }
       if (this.browser) {
         await this.browser.close();
         this.browser = null;
-        console.log('■ Browser closed.');
+        this.logger.log('■ Browser closed.');
       }
     } catch (error) {
-      console.error('❌ Error closing browser:', error);
+      this.logger.error('❌ Error closing browser:', error);
     }
   }
 
@@ -284,7 +284,7 @@ export class WebScraperService {
     //   dataRoleSearchSelector,
     //   (input: HTMLInputElement) => input.value,
     // );
-    // console.log('search input current text:', searchInputValue);
+    // this.logger.log('search input current text:', searchInputValue);
 
     // Reset input
     await this.page.$eval(dataRoleSearchSelector, (input: HTMLInputElement) => {
@@ -325,7 +325,7 @@ export class WebScraperService {
     const newHtml = await this.page.content();
     $ = cheerio.load(newHtml);
 
-    console.log(
+    this.logger.log(
       'Selected symbol:',
       this.coloredText(ELogColor.FgYellow, $(domSelector).text()),
     );
@@ -340,7 +340,7 @@ export class WebScraperService {
     });
 
     if ($(domSelector).text() === chartIntervalMap[interval]) {
-      console.log(
+      this.logger.log(
         'Selected interval:',
         this.coloredText(ELogColor.FgYellow, $(domSelector).text()),
         '(already selected)',
@@ -378,7 +378,7 @@ export class WebScraperService {
     const newHtml = await this.page.content();
     $ = cheerio.load(newHtml);
 
-    console.log(
+    this.logger.log(
       'Selected interval:',
       this.coloredText(ELogColor.FgYellow, $(domSelector).text()),
     );
@@ -443,7 +443,7 @@ export class WebScraperService {
       const isNotPressed = isPressed === 'false';
       // const switcherNotPresent =
       //   $(unionObjectTreeWidgetSwitcherSelector).length === 0;
-      // console.log(
+      // this.logger.log(
       //   'objectTreeButtonEl isNotPressed',
       //   isNotPressed,
       //   '||',
@@ -453,7 +453,7 @@ export class WebScraperService {
       // );
       if (isNotPressed) {
         // || switcherNotPresent
-        // console.log('objectTreeButtonEl.click()');
+        // this.logger.log('objectTreeButtonEl.click()');
         await objectTreeButtonEl.click();
       }
     }
@@ -464,14 +464,14 @@ export class WebScraperService {
     });
 
     const chartDataWindowSelector = '.chart-data-window';
-    // console.log(
+    // this.logger.log(
     //   "$('.chart-data-window').length",
     //   $(chartDataWindowSelector).length,
     // );
     if ($(chartDataWindowSelector).length === 0) {
       const switcherButtonSelector = `${unionObjectTreeWidgetSwitcherSelector} button#data-window`;
 
-      // console.log('click to switch');
+      // this.logger.log('click to switch');
       await this.page.click(switcherButtonSelector);
 
       await this.page.waitForSelector(chartDataWindowSelector, {
@@ -582,7 +582,7 @@ export class WebScraperService {
       shortStrategyTitle,
     );
 
-    // console.log('Data Window item:', !!item);
+    // this.logger.log('Data Window item:', !!item);
 
     let result = [];
     if (item) {
@@ -599,7 +599,7 @@ export class WebScraperService {
       return result;
     } else if (attempt < maxAttempts) {
       const waitMs = 1000;
-      console.log(
+      this.logger.log(
         `extractStrategyData RETRY #${attempt} — waiting ${waitMs}ms...`,
       );
       await this.utilsService.waitSeconds(waitMs);
@@ -721,10 +721,12 @@ export class WebScraperService {
 
       for (const title of titlesToCheck) {
         if (text === title) {
-          console.log(`✅ Exact match found for strategy title: "${title}"`);
+          this.logger.log(
+            `✅ Exact match found for strategy title: "${title}"`,
+          );
           return;
         } else if (text.includes(title)) {
-          console.log(
+          this.logger.log(
             `☑ Partial match found for strategy title: "${title}" in "${text}"`,
           );
           return;
