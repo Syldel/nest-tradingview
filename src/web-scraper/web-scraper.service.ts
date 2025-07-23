@@ -11,6 +11,10 @@ import { ChartInterval, chartIntervalMap } from '../types/chart.type';
 import { GetStrategyDataParams } from '../types/strategy-data.type';
 import { CookiesService } from '../cookies/cookies.service';
 import { StrategyDataDto } from './dto/strategy-data.dto';
+import {
+  MarketSnapshot,
+  marketSnapshotTitleMap,
+} from '../types/market-snapshot.type';
 
 @Injectable()
 export class WebScraperService {
@@ -248,11 +252,33 @@ export class WebScraperService {
       throw new Error('Failed to choose interval');
     }
 
-    return this.extractStrategyData({
+    const marketSnapshotRaw = await this.extractStrategyData({
+      strategyTitle: `${symbol.toUpperCase()} · ${chartIntervalMap[interval]} · ${exchange.toUpperCase()}`,
+      shortStrategyTitle: null,
+      $: $,
+    });
+
+    let marketSnapshot: MarketSnapshot;
+    if (marketSnapshotRaw?.length > 0) {
+      const meta = {
+        symbol: symbol.toUpperCase(),
+        interval: chartIntervalMap[interval],
+        exchange: exchange.toUpperCase(),
+      };
+
+      marketSnapshot = this.convertMarketSnapshot(marketSnapshotRaw, meta);
+    }
+
+    const strategySnapshot = await this.extractStrategyData({
       strategyTitle,
       shortStrategyTitle,
       $,
     });
+
+    return {
+      marketSnapshot,
+      strategySnapshot,
+    };
   }
 
   async selectSymbol(symbol: string, exchange: string, $: cheerio.CheerioAPI) {
@@ -819,5 +845,34 @@ export class WebScraperService {
     }
 
     return false; // ❌ Timeout sans changement
+  }
+
+  parseNumber(str: string): number {
+    return parseFloat(str.replace(/\s/g, '').replace(',', '.'));
+  }
+
+  /**
+   * Converts a raw array of market snapshot data (with localized titles)
+   * into a structured `MarketSnapshot` object.
+   */
+  convertMarketSnapshot(
+    raw: { title: string; value: string }[],
+    meta: Pick<MarketSnapshot, 'symbol' | 'interval' | 'exchange'>,
+  ): MarketSnapshot {
+    const snapshot: Partial<MarketSnapshot> = { ...meta };
+
+    for (const { title, value } of raw) {
+      const key =
+        marketSnapshotTitleMap[this.utilsService.capitalizeWords(title)];
+      if (!key) continue;
+
+      if (key === 'volume') {
+        snapshot[key] = value; // or parseVolume(value) if needed
+      } else {
+        snapshot[key] = this.parseNumber(value);
+      }
+    }
+
+    return snapshot as MarketSnapshot;
   }
 }
