@@ -44,12 +44,12 @@ export class CustomLogger implements LoggerService {
     if (!this.shouldLog(level)) return;
 
     const { context, message } = this.extractContextAndMessages(args);
-    const timestamp = `${this.darkGray}${new Date().toISOString()}${this.resetColor}`;
+    // const timestamp = `${this.darkGray}${new Date().toISOString()}${this.resetColor}`;
     const color = this.levelColors[level] || '';
     const contextPart = context
       ? ` ${this.darkGray}[${context}]${this.resetColor}`
       : '';
-    const logLine = `${timestamp} ${color}[${level.toUpperCase()}]${this.resetColor}${contextPart} ${message}`;
+    const logLine = `${color}[${level.toUpperCase()}]${this.resetColor}${contextPart} ${message}`;
 
     const out = {
       log: console.log,
