@@ -43,18 +43,30 @@ export class WebScraperService {
 
   async launchBrowser() {
     this.logger.log('★ Init Puppeteer');
-    // this.logger.log('executablePath:', executablePath());
+    this.logger.log('executablePath:', executablePath());
+
     let options: LaunchOptions;
     if (this.isProduction) {
       options = {
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+        ],
         executablePath: executablePath(),
       };
     } else {
       options = { headless: false };
     }
-    this.browser = await puppeteer.launch(options);
+    try {
+      this.browser = await puppeteer.launch(options);
+    } catch (error) {
+      this.logger.error('Erreur lors du lancement de Puppeteer :', error);
+    }
 
     // Définir les cookies d'authentification
     const rawCookies = await this.cookiesService.findAll();
