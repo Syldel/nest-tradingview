@@ -17,7 +17,8 @@ export class WebScraperController {
   @Post('strategy-data')
   async getStrategyData(@Body() params: StrategyDataDto) {
     try {
-      return this.scraperService.getStrategyData(params);
+      const result = await this.scraperService.getStrategyData(params);
+      return result;
     } catch (error) {
       throw new InternalServerErrorException(error.message);
     }
