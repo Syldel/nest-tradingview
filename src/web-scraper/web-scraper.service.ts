@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import puppeteer, { Browser, LaunchOptions, Page } from 'puppeteer';
+import puppeteer, {
+  Browser,
+  ElementHandle,
+  LaunchOptions,
+  Page,
+  WaitForSelectorOptions,
+} from 'puppeteer';
 import { executablePath } from 'puppeteer';
 import * as cheerio from 'cheerio';
 
@@ -165,40 +171,23 @@ export class WebScraperService {
       timeout: 60000,
     });
 
-    await this.page.waitForSelector('.js-rootresizer__contents', {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay('.js-rootresizer__contents');
     this.logger.log('✅ .js-rootresizer__contents displayed!');
 
-    await this.page.waitForSelector(
+    await this.waitForSelectorWithDelay(
       '.layout__area--top #header-toolbar-symbol-search',
-      {
-        visible: true,
-        timeout: 60000,
-      },
     );
     this.logger.log('✅ #header-toolbar-symbol-search displayed!');
 
-    await this.page.waitForSelector('.layout__area--left #drawing-toolbar', {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay('.layout__area--left #drawing-toolbar');
     this.logger.log('✅ #drawing-toolbar displayed!');
 
-    await this.page.waitForSelector(
+    await this.waitForSelectorWithDelay(
       '.layout__area--topleft [data-role="button"]',
-      {
-        visible: true,
-        timeout: 60000,
-      },
     );
     this.logger.log('✅ Top left button displayed!');
 
-    await this.page.waitForSelector('#footer-chart-panel', {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay('#footer-chart-panel');
     this.logger.log('✅ #footer-chart-panel displayed!');
 
     // On attend que le réseau soit inactif (ex: AJAX terminé)
@@ -295,10 +284,7 @@ export class WebScraperService {
 
   async selectSymbol(symbol: string, exchange: string, $: cheerio.CheerioAPI) {
     const domSelector = '#header-toolbar-symbol-search';
-    await this.page.waitForSelector(domSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(domSelector);
 
     if ($('[data-name="symbol-search-items-dialog"]').length == 0) {
       // Open dialog
@@ -313,10 +299,7 @@ export class WebScraperService {
     );
 
     const dataRoleSearchSelector = '[data-role="search"]';
-    await this.page.waitForSelector(dataRoleSearchSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(dataRoleSearchSelector);
     // Get search input current text
     // const searchInputValue = await this.page.$eval(
     //   dataRoleSearchSelector,
@@ -372,10 +355,7 @@ export class WebScraperService {
 
   async selectInterval(interval: ChartInterval, $: cheerio.CheerioAPI) {
     const domSelector = '#header-toolbar-intervals';
-    await this.page.waitForSelector(domSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(domSelector);
 
     if ($(domSelector).text() === chartIntervalMap[interval]) {
       this.logger.log(
@@ -394,10 +374,7 @@ export class WebScraperService {
       }
     }, domSelector);
 
-    await this.page.waitForSelector('[data-name="popup-menu-container"]', {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay('[data-name="popup-menu-container"]');
 
     await this.page.evaluate((targetInterval) => {
       const container = document.querySelector(
@@ -425,12 +402,8 @@ export class WebScraperService {
   }
 
   async disableAllCurrentIndicators() {
-    await this.page.waitForSelector(
+    await this.waitForSelectorWithDelay(
       '[data-name="pane-widget-chart-gui-wrapper"]',
-      {
-        visible: true,
-        timeout: 60000,
-      },
     );
 
     await this.page.$$eval(
@@ -464,10 +437,7 @@ export class WebScraperService {
     const rightToolbarSelector = '[data-name="right-toolbar"]';
     const objectTreeButtonSelector = `${rightToolbarSelector} [data-name="object_tree"]`;
 
-    await this.page.waitForSelector(objectTreeButtonSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(objectTreeButtonSelector);
 
     const unionObjectTreeWidgetSwitcherSelector =
       '#union-object-tree-widget-switcher';
@@ -496,10 +466,7 @@ export class WebScraperService {
       }
     }
 
-    await this.page.waitForSelector(unionObjectTreeWidgetSwitcherSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(unionObjectTreeWidgetSwitcherSelector);
 
     const chartDataWindowSelector = '.chart-data-window';
     // this.logger.log(
@@ -512,10 +479,7 @@ export class WebScraperService {
       // this.logger.log('click to switch');
       await this.page.click(switcherButtonSelector);
 
-      await this.page.waitForSelector(chartDataWindowSelector, {
-        visible: true,
-        timeout: 60000,
-      });
+      await this.waitForSelectorWithDelay(chartDataWindowSelector);
     }
 
     const item = await this.page.evaluate(
@@ -654,10 +618,7 @@ export class WebScraperService {
 
   async cleanIndicators() {
     const removeAllDrawingToolsSelector = '[data-name="removeAllDrawingTools"]';
-    await this.page.waitForSelector(removeAllDrawingToolsSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(removeAllDrawingToolsSelector);
 
     await this.page.evaluate(() => {
       const container = document.querySelector(
@@ -676,10 +637,7 @@ export class WebScraperService {
 
     const popupMenuContainerButtonSelector =
       '#overlap-manager-root [data-name="popup-menu-container"] [data-name="menu-inner"] [data-name="remove-studies"]';
-    await this.page.waitForSelector(popupMenuContainerButtonSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(popupMenuContainerButtonSelector);
 
     await this.page.click(popupMenuContainerButtonSelector);
   }
@@ -690,20 +648,14 @@ export class WebScraperService {
 
     await this.cleanIndicators();
 
-    await this.page.waitForSelector('#header-toolbar-indicators', {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay('#header-toolbar-indicators');
     await this.page.click(
       '#header-toolbar-indicators [data-name="open-indicators-dialog"]',
     );
 
     const indicatorsDialogContentSelector =
       '[data-name="indicators-dialog"] [data-role="dialog-content"]';
-    await this.page.waitForSelector(indicatorsDialogContentSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(indicatorsDialogContentSelector);
 
     const indicatorSearchItemsDialogSelector = `${indicatorsDialogContentSelector} [data-role="list-item"]`;
     const initialCount = await this.page.$$eval(
@@ -713,10 +665,7 @@ export class WebScraperService {
 
     const indicatorsDialogSearchSelector =
       '[data-name="indicators-dialog"] [data-role="search"]';
-    await this.page.waitForSelector(indicatorsDialogSearchSelector, {
-      visible: true,
-      timeout: 60000,
-    });
+    await this.waitForSelectorWithDelay(indicatorsDialogSearchSelector);
     await this.page.type(indicatorsDialogSearchSelector, strategyTitle);
 
     await this.waitForItemCountChange(
@@ -759,9 +708,9 @@ export class WebScraperService {
 
       for (const title of titlesToCheck) {
         if (text === title) {
-          this.logger.log(
-            `✅ Exact match found for strategy title: "${title}"`,
-          );
+          // this.logger.log(
+          //   `✅ Exact match found for strategy title: "${title}"`,
+          // );
           return;
         } else if (text.includes(title)) {
           this.logger.log(
@@ -886,5 +835,25 @@ export class WebScraperService {
     }
 
     return snapshot as MarketSnapshot;
+  }
+
+  /**
+   * Waits for an optional delay, then waits for a selector to appear on the current page.
+   *
+   * @param selector - The CSS selector to wait for.
+   * @param waitMs - Optional delay (in milliseconds) before checking the selector. Default is 100ms.
+   * @param options - Options for Puppeteer's waitForSelector (visibility, timeout, etc.).
+   * @returns A Promise that resolves to the found ElementHandle or null if not found.
+   */
+  async waitForSelectorWithDelay(
+    selector: string,
+    waitMs = 100,
+    options: WaitForSelectorOptions = { visible: true, timeout: 60000 },
+  ): Promise<ElementHandle<Element> | null> {
+    if (waitMs > 0) {
+      await this.utilsService.waitSeconds(waitMs);
+    }
+
+    return this.page.waitForSelector(selector, options);
   }
 }
