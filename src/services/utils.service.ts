@@ -61,6 +61,32 @@ export class UtilsService {
       .join(' ');
   }
 
+  /**
+   * Converts a string to camelCase.
+   *
+   * @param {string} str - The input string.
+   * @returns {string} The camelCased string.
+   */
+  public toCamelCase(str: string): string {
+    return str
+      .replace(/[^a-zA-Z0-9]+/g, ' ')
+      .trim()
+      .toLowerCase()
+      .replace(/ (.)/g, (_, chr) => chr.toUpperCase());
+  }
+
+  /**
+   * Parses a localized number string into a float.
+   *
+   * Replaces whitespace and converts comma to dot for decimal support.
+   *
+   * @param {string} str - The input string representing a number.
+   * @returns {number} The parsed floating-point number.
+   */
+  public parseNumber(str: string): number {
+    return parseFloat(str.replace(/\s/g, '').replace(',', '.'));
+  }
+
   public getLastElement(input: string, delimiter: string): string {
     if (!input) return input;
     const parts = input.split(delimiter);

@@ -944,4 +944,66 @@ describe('UtilsService', () => {
       expect(utilsService.capitalizeWords('a b c')).toBe('A B C');
     });
   });
+
+  describe('toCamelCase', () => {
+    it('converts regular phrases', () => {
+      expect(utilsService.toCamelCase('Total Revenue')).toBe('totalRevenue');
+      expect(utilsService.toCamelCase('Net Profit')).toBe('netProfit');
+    });
+
+    it('handles symbols and punctuation', () => {
+      expect(utilsService.toCamelCase('Gross Margin (%)')).toBe('grossMargin');
+      expect(utilsService.toCamelCase('Cash & Equivalents')).toBe(
+        'cashEquivalents',
+      );
+    });
+
+    it('trims and normalizes spacing', () => {
+      expect(utilsService.toCamelCase('  Free   Cash Flow ')).toBe(
+        'freeCashFlow',
+      );
+    });
+
+    it('returns empty string for empty input', () => {
+      expect(utilsService.toCamelCase('')).toBe('');
+    });
+  });
+
+  describe('parseNumber', () => {
+    it('parses a plain number string', () => {
+      expect(utilsService.parseNumber('1234.56')).toBeCloseTo(1234.56);
+    });
+
+    it('parses a number string with comma as decimal separator', () => {
+      expect(utilsService.parseNumber('1234,56')).toBeCloseTo(1234.56);
+    });
+
+    it('parses a number string with spaces', () => {
+      expect(utilsService.parseNumber('1 234,56')).toBeCloseTo(1234.56);
+    });
+
+    it('parses a number string with multiple spaces', () => {
+      expect(utilsService.parseNumber(' 1  234  ,  56 ')).toBeCloseTo(1234.56);
+    });
+
+    it('parses an integer string with spaces', () => {
+      expect(utilsService.parseNumber('1 000')).toBe(1000);
+    });
+
+    it('parses a string with only comma decimals', () => {
+      expect(utilsService.parseNumber(',5')).toBeCloseTo(0.5);
+    });
+
+    it('parses a string with dot decimal and spaces', () => {
+      expect(utilsService.parseNumber(' 2 345.78 ')).toBeCloseTo(2345.78);
+    });
+
+    it('returns NaN for non-numeric string', () => {
+      expect(utilsService.parseNumber('hello')).toBeNaN();
+    });
+
+    it('returns NaN for empty string', () => {
+      expect(utilsService.parseNumber('')).toBeNaN();
+    });
+  });
 });

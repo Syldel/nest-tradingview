@@ -278,7 +278,7 @@ export class WebScraperService {
 
     return {
       marketSnapshot,
-      strategySnapshot,
+      strategySnapshot: this.transformParsedData(strategySnapshot),
     };
   }
 
@@ -808,10 +808,6 @@ export class WebScraperService {
     return false; // ❌ Timeout sans changement
   }
 
-  parseNumber(str: string): number {
-    return parseFloat(str.replace(/\s/g, '').replace(',', '.'));
-  }
-
   /**
    * Converts a raw array of market snapshot data (with localized titles)
    * into a structured `MarketSnapshot` object.
@@ -830,11 +826,32 @@ export class WebScraperService {
       if (key === 'volume') {
         snapshot[key] = value; // or parseVolume(value) if needed
       } else {
-        snapshot[key] = this.parseNumber(value);
+        snapshot[key] = this.utilsService.parseNumber(value);
       }
     }
 
     return snapshot as MarketSnapshot;
+  }
+
+  /**
+   * Converts parsed { title, value }[] into an object with camelCased keys.
+   * Converts numeric values to numbers, leaves others as strings.
+   *
+   * @param {Array<{ title: string; value: string }>} data
+   * @returns {Record<string, string | number>}
+   */
+  transformParsedData(
+    data: { title: string; value: string }[],
+  ): Record<string, string | number> {
+    return data.reduce(
+      (acc, { title, value }) => {
+        const key = this.utilsService.toCamelCase(title);
+        const parsed = this.utilsService.parseNumber(value);
+        acc[key] = isNaN(parsed) ? value : parsed;
+        return acc;
+      },
+      {} as Record<string, string | number>,
+    );
   }
 
   /**
